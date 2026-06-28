@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Our Distance, in Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; min-height:100%; }
+  body { background:#0b1020; }
+  #root { min-height:100vh; }
+  @keyframes twinkle { 0%,100%{opacity:.2} 50%{opacity:.9} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.03)} }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+  button { font-family:inherit; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; cursor:pointer; }
+  button:active { transform:scale(0.96); }
+  input, select { font-family:inherit; }
+  input::placeholder { color: rgba(255,255,255,0.35); }
+  select option { color:#111; }
+  .glow:hover { box-shadow: 0 0 0 1px rgba(255,255,255,0.22), 0 14px 40px rgba(0,0,0,0.42) !important; }
+  .skeleton { background:linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 37%, rgba(255,255,255,0.06) 63%); background-size:200% 100%; animation:shimmer 1.4s infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ---- AI (Pollinations, free, no key, browser-friendly) ----
+async function askAI(prompt){
+  const url = "https://text.pollinations.ai/" + encodeURIComponent(prompt) + "?model=openai";
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("ai");
+  let t = (await res.text()).trim();
+  t = t.replace(/^["\u201c\u201d']+|["\u201c\u201d']+$/g, "");
+  if(!t || t.length>400) t = t.slice(0,300);
+  return t;
+}
+
+const ZONES = ["Pacific/Honolulu","America/Anchorage","America/Los_Angeles","America/Denver","America/Chicago",
+  "America/New_York","America/Sao_Paulo","Atlantic/Reykjavik","Europe/London","Europe/Paris","Europe/Berlin",
+  "Europe/Athens","Africa/Cairo","Africa/Nairobi","Asia/Dubai","Asia/Karachi","Asia/Kolkata","Asia/Dhaka",
+  "Asia/Bangkok","Asia/Singapore","Asia/Shanghai","Asia/Tokyo","Asia/Seoul","Australia/Sydney","Pacific/Auckland"];
+function guessZone(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){ return "Asia/Kolkata"; } }
+function partsIn(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",weekday:"short",month:"short",day:"numeric",hour12:true}); const o={}; f.formatToParts(d).forEach(p=>o[p.type]=p.value); return o; }
+function hour24In(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"2-digit",hour12:false}); return parseInt(f.formatToParts(d).find(p=>p.type==="hour").value,10)%24; }
+function offsetLabel(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"shortOffset"}); const p=f.formatToParts(d).find(x=>x.type==="timeZoneName"); return p?p.value:""; }
+function phase(h){
+  if(h>=5&&h<8) return {label:"Sunrise",icon:"\uD83C\uDF05",sky:"linear-gradient(160deg,#ffb27a,#ff8fae)"};
+  if(h>=8&&h<12) return {label:"Morning",icon:"\u2600\uFE0F",sky:"linear-gradient(160deg,#aee1ff,#ffd6a8)"};
+  if(h>=12&&h<17) return {label:"Afternoon",icon:"\uD83C\uDF24\uFE0F",sky:"linear-gradient(160deg,#9cc9ff,#c9b8ff)"};
+  if(h>=17&&h<20) return {label:"Evening",icon:"\uD83C\uDF07",sky:"linear-gradient(160deg,#ff9a76,#b56bd1)"};
+  if(h>=20&&h<23) return {label:"Night",icon:"\uD83C\uDF19",sky:"linear-gradient(160deg,#3a2c6e,#6b3f8c)"};
+  return {label:"Asleep",icon:"\uD83D\uDE34",sky:"linear-gradient(160deg,#16224d,#38275f)"};
+}
+function awake(h){ return h>=7&&h<23; }
+function encode(c){ try { return btoa(encodeURIComponent(JSON.stringify(c))); } catch(e){ return ""; } }
+function decode(s){ try { return JSON.parse(decodeURIComponent(atob(s))); } catch(e){ return null; } }
+
+function Stars(){
+  const stars=useMemo(()=>Array.from({length:60},(_,i)=>({id:i,x:Math.random()*100,y:Math.random()*100,s:Math.random()*2+1,d:Math.random()*4})),[]);
+  return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0}}>{stars.map(s=>(
+    <span key={s.id} style={{position:"absolute",left:s.x+"%",top:s.y+"%",width:s.s,height:s.s,borderRadius:"50%",background:"#fff",animation:"twinkle "+(3+s.d)+"s ease-in-out "+s.d+"s infinite"}}/>))}</div>;
+}
+
+function ClockCard({ who, tz, now, accent }){
+  const p=partsIn(tz,now), h=hour24In(tz,now), ph=phase(h);
+  return (
+    <div className="glow" style={{flex:1,minWidth:240,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",
+      borderRadius:26,padding:"26px 24px",backdropFilter:"blur(12px)",position:"relative",overflow:"hidden",
+      boxShadow:"0 14px 40px rgba(0,0,0,0.3)",transition:"box-shadow .25s ease"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:ph.sky}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.8,fontWeight:600,color:accent}}>{who}</span>
+        <span style={{fontSize:12,opacity:0.55}}>{offsetLabel(tz,now)}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+        <span style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:50,fontWeight:600,lineHeight:1,letterSpacing:-1}}>{p.hour}:{p.minute}</span>
+        <span style={{fontSize:18,opacity:0.7}}>{p.dayPeriod}</span>
+        <span style={{fontSize:15,opacity:0.5,marginLeft:2}}>:{p.second}</span>
+      </div>
+      <div style={{marginTop:8,fontSize:14,opacity:0.7}}>{p.weekday}, {p.month} {p.day}</div>
+      <div style={{marginTop:18,display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"rgba(255,255,255,0.06)"}}>
+        <span style={{fontSize:22}}>{ph.icon}</span>
+        <div><div style={{fontSize:14,fontWeight:600}}>{ph.label}</div>
+        <div style={{fontSize:12,opacity:0.6}}>{awake(h)?"Probably awake":"Probably asleep"}</div></div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const initial=useMemo(()=>{ try{ const h=window.location.hash.replace(/^#/,""); if(h){ const c=decode(h); if(c&&c.tzA&&c.tzB) return c; } }catch(e){} return null; },[]);
+  const [cfg,setCfg]=useState(initial);
+  const [now,setNow]=useState(new Date());
+  const [toast,setToast]=useState("");
+  const [note,setNote]=useState("");
+  const [loadingNote,setLoadingNote]=useState(false);
+
+  const [nameA,setNameA]=useState("You");
+  const [tzA,setTzA]=useState(guessZone());
+  const [nameB,setNameB]=useState("Partner");
+  const [tzB,setTzB]=useState("America/New_York");
+  const [meetDate,setMeetDate]=useState("");
+
+  useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(t); },[]);
+  const flash=(m)=>{ setToast(m); setTimeout(()=>setToast(""),1800); };
+
+  const overlap=useMemo(()=>{ if(!cfg) return []; const base=new Date(now); base.setMinutes(0,0,0); const out=[];
+    for(let i=0;i<24;i++){ const d=new Date(base.getTime()+i*3600000); out.push({d,both:awake(hour24In(cfg.tzA,d))&&awake(hour24In(cfg.tzB,d))}); }
+    let s=out.findIndex(x=>x.both); if(s===-1) return []; let e=s; while(e+1<out.length&&out[e+1].both) e++; return [out[s].d,out[e].d]; },[cfg,now]);
+
+  const daysUntil=useMemo(()=>{ if(!cfg||!cfg.meetDate) return null; const t=new Date(cfg.meetDate+"T00:00:00"); const today=new Date(); today.setHours(0,0,0,0); return Math.round((t-today)/86400000); },[cfg,now]);
+
+  const shareUrl=useMemo(()=>{ if(!cfg) return ""; try{ return window.location.origin+window.location.pathname+"#"+encode(cfg); }catch(e){ return ""; } },[cfg]);
+  const copy=useCallback(async()=>{ try{ await navigator.clipboard.writeText(shareUrl); flash("Link copied \u2713"); }catch(e){ flash("Long-press to copy the link"); } },[shareUrl]);
+
+  const writeNote=useCallback(async()=>{
+    if(!cfg) return; setLoadingNote(true); setNote("");
+    const hB=hour24In(cfg.tzB,now); const phB=phase(hB).label; const awakeB=awake(hB);
+    const ctx = awakeB ? (phB+", and they're likely awake right now") : "late at night for them, they're likely asleep";
+    const prompt = "Write ONE short, warm, original text message I can send to my long-distance partner named "+cfg.nameB+". It is "+ctx+". Make it sweet and specific to the time of day, not generic. One or two sentences, under 30 words, no quotes, no emojis at the start, sound like a real person texting someone they love.";
+    try { const t=await askAI(prompt); setNote(t); }
+    catch(e){ setNote(awakeB ? ("Thinking about you, "+cfg.nameB+". Free for a quick call?") : ("Goodnight, "+cfg.nameB+". Wherever you are, you're the last thing on my mind tonight.")); }
+    finally { setLoadingNote(false); }
+  },[cfg,now]);
+
+  const sendNote=()=>{ const text=note+"\n\n("+shareUrl+")"; window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank"); };
+
+  const submit=()=>{ setCfg({nameA:nameA.trim()||"You",tzA,nameB:nameB.trim()||"Partner",tzB,meetDate}); };
+
+  const wrap={minHeight:"100vh",background:"radial-gradient(1200px 600px at 50% -10%, #1a2547 0%, #0b1020 60%)",color:"#eef1ff",fontFamily:"'Space Grotesk',sans-serif",position:"relative",padding:"clamp(20px,5vw,48px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:22};
+  const serif={fontFamily:"'Fraunces',serif"};
+  const inp={width:"100%",padding:"13px 14px",borderRadius:13,border:"1px solid rgba(255,255,255,0.18)",background:"rgba(255,255,255,0.06)",color:"#fff",fontSize:15,outline:"none",marginBottom:14};
+  const lbl={display:"block",fontSize:12,letterSpacing:1,textTransform:"uppercase",opacity:0.6,fontWeight:600,margin:"0 0 7px"};
+  const cta={width:"100%",padding:"15px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#ff6b9d,#7b6bff)",color:"#fff",fontSize:16,fontWeight:700,boxShadow:"0 10px 30px rgba(123,107,255,0.35)"};
+  const pill={padding:"10px 16px",borderRadius:20,border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.07)",color:"#eef1ff",fontSize:13,fontWeight:600};
+
+  if(!cfg){
+    return (
+      <div style={wrap}><Stars/>
+        <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:420,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:28,padding:"34px 28px",backdropFilter:"blur(14px)",animation:"fadeUp .5s ease",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          <div style={{fontSize:40,textAlign:"center"}}>{"\uD83C\uDF0D"}</div>
+          <h1 style={Object.assign({},serif,{textAlign:"center",margin:"8px 0 4px",fontSize:28,fontWeight:600})}>Our distance, in time</h1>
+          <p style={{textAlign:"center",opacity:0.7,fontSize:14,lineHeight:1.5,margin:"0 0 24px"}}>Two clocks, the hours you're both awake, a countdown, and an AI that helps you say the right thing.</p>
+          <label style={lbl}>Person one</label>
+          <input style={inp} value={nameA} onChange={e=>setNameA(e.target.value)} placeholder="Name"/>
+          <select style={inp} value={tzA} onChange={e=>setTzA(e.target.value)}>{ZONES.map(z=><option key={z} value={z}>{z.replace(/_/g," ")}</option>)}</select>
+          <label style={lbl}>Person two</label>
+          <input style={inp} value={nameB} onChange={e=>setNameB(e.target.value)} placeholder="Name"/>
+          <select style={inp} value={tzB} onChange={e=>setTzB(e.target.value)}>{ZONES.map(z=><option key={z} value={z}>{z.replace(/_/g," ")}</option>)}</select>
+          <label style={lbl}>Next time you meet (optional)</label>
+          <input style={inp} type="date" value={meetDate} onChange={e=>setMeetDate(e.target.value)}/>
+          <button onClick={submit} style={Object.assign({},cta,{marginTop:6})}>Start the clocks {"\u2728"}</button>
+        </div>
+      </div>
+    );
+  }
+
+  const fmt=(d)=>new Intl.DateTimeFormat("en-US",{hour:"numeric",hour12:true}).format(d);
+  return (
+    <div style={wrap}><Stars/>
+      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:760,display:"flex",flexDirection:"column",gap:18,animation:"fadeUp .5s ease"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
+          <ClockCard who={cfg.nameA} tz={cfg.tzA} now={now} accent="#ff8fb0"/>
+          <ClockCard who={cfg.nameB} tz={cfg.tzB} now={now} accent="#8fb0ff"/>
+        </div>
+
+        <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:22,padding:"22px 24px",backdropFilter:"blur(12px)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:20}}>{"\uD83D\uDC9B"}</span>
+            <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.65,fontWeight:600}}>Good hours together</span>
+          </div>
+          {overlap.length===2 ? (
+            <p style={Object.assign({},serif,{margin:0,fontSize:20})}>You're both awake from <b>{fmt(overlap[0])}</b> to <b>{fmt(new Date(overlap[1].getTime()+3600000))}</b> {cfg.nameA==="You"?"your":cfg.nameA+"'s"} time.</p>
+          ) : (
+            <p style={Object.assign({},serif,{margin:0,fontSize:20,opacity:0.85})}>No shared waking hours right now, one of you is dreaming. {"\uD83C\uDF19"}</p>
+          )}
+        </div>
+
+        {/* AI note */}
+        <div style={{background:"linear-gradient(135deg,rgba(255,107,157,0.12),rgba(123,107,255,0.12))",border:"1px solid rgba(255,255,255,0.14)",borderRadius:22,padding:"22px 24px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <span style={{fontSize:20}}>{"\u2728"}</span>
+            <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.7,fontWeight:600}}>Say the right thing</span>
+          </div>
+          {loadingNote ? (
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+              <div className="skeleton" style={{height:14,borderRadius:7,width:"92%"}}/>
+              <div className="skeleton" style={{height:14,borderRadius:7,width:"70%"}}/>
+            </div>
+          ) : note ? (
+            <p style={Object.assign({},serif,{margin:"0 0 14px",fontSize:20,lineHeight:1.5})}>{"\u201c"+note+"\u201d"}</p>
+          ) : (
+            <p style={{margin:"0 0 14px",fontSize:15,opacity:0.7,lineHeight:1.5}}>Let AI write a text that fits {cfg.nameB}'s time of day right now, ready to send.</p>
+          )}
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button onClick={writeNote} disabled={loadingNote} style={Object.assign({},pill,{background:"linear-gradient(135deg,#ff6b9d,#7b6bff)",border:"none",color:"#fff",opacity:loadingNote?0.6:1})}>
+              {note?"Write another":"Write a note"} {"\u2728"}
+            </button>
+            {note && !loadingNote && <button onClick={sendNote} style={pill}>Send on WhatsApp</button>}
+            {note && !loadingNote && <button onClick={()=>{navigator.clipboard.writeText(note); flash("Note copied \u2713");}} style={pill}>Copy note</button>}
+          </div>
+        </div>
+
+        {daysUntil!==null && (
+          <div style={{background:"linear-gradient(135deg,rgba(255,107,157,0.18),rgba(123,107,255,0.18))",border:"1px solid rgba(255,255,255,0.14)",borderRadius:22,padding:"24px",textAlign:"center",animation:"pulse 5s ease-in-out infinite"}}>
+            {daysUntil>0 ? (<>
+              <div style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.7,fontWeight:600}}>Until you're together</div>
+              <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:56,fontWeight:700,lineHeight:1.1,margin:"6px 0"}}>{daysUntil}</div>
+              <div style={{fontSize:16,opacity:0.85}}>{daysUntil===1?"day":"days"} to go {"\u2708\uFE0F"}</div>
+            </>) : daysUntil===0 ? (
+              <div style={Object.assign({},serif,{fontSize:26,fontWeight:600})}>Today's the day. {"\uD83E\uDD70"}</div>
+            ) : (
+              <div style={Object.assign({},serif,{fontSize:20})}>That date has passed, set a new one to count down to. {"\uD83D\uDC9E"}</div>
+            )}
+          </div>
+        )}
+
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={copy} style={pill}>Copy share link</button>
+          <button onClick={()=>{setNameA(cfg.nameA);setTzA(cfg.tzA);setNameB(cfg.nameB);setTzB(cfg.tzB);setMeetDate(cfg.meetDate||"");setCfg(null);}} style={pill}>Edit</button>
+        </div>
+      </div>
+      {toast && <div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.8)",color:"#fff",padding:"9px 20px",borderRadius:20,fontSize:14,fontWeight:600,zIndex:5}}>{toast}</div>}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
