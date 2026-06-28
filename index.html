@@ -6,24 +6,28 @@
 <title>Our Distance, in Time</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin:0; padding:0; min-height:100%; }
-  body { background:#0b1020; }
-  #root { min-height:100vh; }
-  @keyframes twinkle { 0%,100%{opacity:.2} 50%{opacity:.9} }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.03)} }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-  button { font-family:inherit; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; cursor:pointer; }
-  button:active { transform:scale(0.96); }
-  input, select { font-family:inherit; }
-  input::placeholder { color: rgba(255,255,255,0.35); }
-  select option { color:#111; }
-  .glow:hover { box-shadow: 0 0 0 1px rgba(255,255,255,0.22), 0 14px 40px rgba(0,0,0,0.42) !important; }
-  .skeleton { background:linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 37%, rgba(255,255,255,0.06) 63%); background-size:200% 100%; animation:shimmer 1.4s infinite; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;min-height:100%}
+  body{background:#0b1020}
+  #root{min-height:100vh}
+  @keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.9}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  button{font-family:inherit;transition:transform .15s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}
+  button:active{transform:scale(.96)}
+  input,select{font-family:inherit}
+  input::placeholder{color:rgba(255,255,255,.35)}
+  select option{color:#111}
+  .glow:hover{box-shadow:0 0 0 1px rgba(255,255,255,.22),0 14px 40px rgba(0,0,0,.42)!important}
+  .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.06) 25%,rgba(255,255,255,.14) 37%,rgba(255,255,255,.06) 63%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
 </style>
 </head>
 <body>
@@ -32,209 +36,771 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script type="text/babel">
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-// ---- AI (Pollinations, free, no key, browser-friendly) ----
-async function askAI(prompt){
+/* ============================================================
+   AI helper (Pollinations - free, no key, browser friendly)
+   ============================================================ */
+async function askAI(prompt, max){
   const url = "https://text.pollinations.ai/" + encodeURIComponent(prompt) + "?model=openai";
   const res = await fetch(url);
-  if(!res.ok) throw new Error("ai");
+  if(!res.ok) throw new Error("ai-http-" + res.status);
   let t = (await res.text()).trim();
   t = t.replace(/^["\u201c\u201d']+|["\u201c\u201d']+$/g, "");
-  if(!t || t.length>400) t = t.slice(0,300);
+  if(max && t.length > max) t = t.slice(0, max);
   return t;
 }
-
-const ZONES = ["Pacific/Honolulu","America/Anchorage","America/Los_Angeles","America/Denver","America/Chicago",
-  "America/New_York","America/Sao_Paulo","Atlantic/Reykjavik","Europe/London","Europe/Paris","Europe/Berlin",
-  "Europe/Athens","Africa/Cairo","Africa/Nairobi","Asia/Dubai","Asia/Karachi","Asia/Kolkata","Asia/Dhaka",
-  "Asia/Bangkok","Asia/Singapore","Asia/Shanghai","Asia/Tokyo","Asia/Seoul","Australia/Sydney","Pacific/Auckland"];
-function guessZone(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){ return "Asia/Kolkata"; } }
-function partsIn(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",weekday:"short",month:"short",day:"numeric",hour12:true}); const o={}; f.formatToParts(d).forEach(p=>o[p.type]=p.value); return o; }
-function hour24In(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"2-digit",hour12:false}); return parseInt(f.formatToParts(d).find(p=>p.type==="hour").value,10)%24; }
-function offsetLabel(tz, d){ const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"shortOffset"}); const p=f.formatToParts(d).find(x=>x.type==="timeZoneName"); return p?p.value:""; }
-function phase(h){
-  if(h>=5&&h<8) return {label:"Sunrise",icon:"\uD83C\uDF05",sky:"linear-gradient(160deg,#ffb27a,#ff8fae)"};
-  if(h>=8&&h<12) return {label:"Morning",icon:"\u2600\uFE0F",sky:"linear-gradient(160deg,#aee1ff,#ffd6a8)"};
-  if(h>=12&&h<17) return {label:"Afternoon",icon:"\uD83C\uDF24\uFE0F",sky:"linear-gradient(160deg,#9cc9ff,#c9b8ff)"};
-  if(h>=17&&h<20) return {label:"Evening",icon:"\uD83C\uDF07",sky:"linear-gradient(160deg,#ff9a76,#b56bd1)"};
-  if(h>=20&&h<23) return {label:"Night",icon:"\uD83C\uDF19",sky:"linear-gradient(160deg,#3a2c6e,#6b3f8c)"};
-  return {label:"Asleep",icon:"\uD83D\uDE34",sky:"linear-gradient(160deg,#16224d,#38275f)"};
+async function askAILines(prompt){
+  const raw = await askAI(prompt, 1200);
+  return raw.split("\n")
+    .map(l => l.replace(/^[\s\-\*\d\.\)]+/, "").replace(/^["\u201c\u201d']+|["\u201c\u201d']+$/g, "").trim())
+    .filter(l => l.length > 3 && l.length < 160)
+    .slice(0, 6);
 }
-function awake(h){ return h>=7&&h<23; }
+
+/* ============================================================
+   Time-zone utilities
+   ============================================================ */
+const ZONES = [
+  "Pacific/Honolulu","America/Anchorage","America/Los_Angeles","America/Denver","America/Chicago",
+  "America/New_York","America/Toronto","America/Mexico_City","America/Sao_Paulo","America/Buenos_Aires",
+  "Atlantic/Reykjavik","Europe/London","Europe/Lisbon","Europe/Paris","Europe/Madrid","Europe/Berlin",
+  "Europe/Rome","Europe/Athens","Europe/Moscow","Africa/Lagos","Africa/Cairo","Africa/Nairobi",
+  "Asia/Dubai","Asia/Tehran","Asia/Karachi","Asia/Kolkata","Asia/Kathmandu","Asia/Dhaka",
+  "Asia/Bangkok","Asia/Jakarta","Asia/Singapore","Asia/Hong_Kong","Asia/Shanghai","Asia/Manila",
+  "Asia/Tokyo","Asia/Seoul","Australia/Perth","Australia/Sydney","Pacific/Auckland","Pacific/Fiji"
+];
+function guessZone(){
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){ return "Asia/Kolkata"; }
+}
+function zoneLabel(z){ return z.replace(/_/g, " ").replace("/", " / "); }
+function partsIn(tz, d, h12){
+  const f = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit",
+    weekday: "short", month: "short", day: "numeric", hour12: h12
+  });
+  const o = {};
+  f.formatToParts(d).forEach(p => o[p.type] = p.value);
+  return o;
+}
+function hour24In(tz, d){
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false });
+  return parseInt(f.formatToParts(d).find(p => p.type === "hour").value, 10) % 24;
+}
+function minuteIn(tz, d){
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, minute: "2-digit" });
+  return parseInt(f.formatToParts(d).find(p => p.type === "minute").value, 10);
+}
+function offsetMinutes(tz, d){
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+  const parts = {};
+  dtf.formatToParts(d).forEach(p => parts[p.type] = p.value);
+  const asUTC = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return Math.round((asUTC - d.getTime()) / 60000);
+}
+function offsetLabel(tz, d){
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" });
+  const p = f.formatToParts(d).find(x => x.type === "timeZoneName");
+  return p ? p.value : "";
+}
+function phase(h){
+  if(h >= 5 && h < 8)  return { label: "Sunrise",   icon: "\uD83C\uDF05", sky: "linear-gradient(160deg,#ffb27a,#ff8fae)", awake: true };
+  if(h >= 8 && h < 12) return { label: "Morning",   icon: "\u2600\uFE0F", sky: "linear-gradient(160deg,#aee1ff,#ffd6a8)", awake: true };
+  if(h >= 12 && h < 17)return { label: "Afternoon", icon: "\uD83C\uDF24\uFE0F", sky: "linear-gradient(160deg,#9cc9ff,#c9b8ff)", awake: true };
+  if(h >= 17 && h < 20)return { label: "Evening",   icon: "\uD83C\uDF07", sky: "linear-gradient(160deg,#ff9a76,#b56bd1)", awake: true };
+  if(h >= 20 && h < 23)return { label: "Night",     icon: "\uD83C\uDF19", sky: "linear-gradient(160deg,#3a2c6e,#6b3f8c)", awake: true };
+  return { label: "Asleep", icon: "\uD83D\uDE34", sky: "linear-gradient(160deg,#16224d,#38275f)", awake: false };
+}
+
+/* ============================================================
+   Persistence helpers
+   ============================================================ */
 function encode(c){ try { return btoa(encodeURIComponent(JSON.stringify(c))); } catch(e){ return ""; } }
 function decode(s){ try { return JSON.parse(decodeURIComponent(atob(s))); } catch(e){ return null; } }
+function uid(){ return Math.random().toString(36).slice(2, 9); }
 
+/* ============================================================
+   Decorative starfield
+   ============================================================ */
 function Stars(){
-  const stars=useMemo(()=>Array.from({length:60},(_,i)=>({id:i,x:Math.random()*100,y:Math.random()*100,s:Math.random()*2+1,d:Math.random()*4})),[]);
-  return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0}}>{stars.map(s=>(
-    <span key={s.id} style={{position:"absolute",left:s.x+"%",top:s.y+"%",width:s.s,height:s.s,borderRadius:"50%",background:"#fff",animation:"twinkle "+(3+s.d)+"s ease-in-out "+s.d+"s infinite"}}/>))}</div>;
+  const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({
+    id: i, x: Math.random() * 100, y: Math.random() * 100,
+    s: Math.random() * 2 + 1, d: Math.random() * 4
+  })), []);
+  return (
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+      {stars.map(s => (
+        <span key={s.id} style={{
+          position: "absolute", left: s.x + "%", top: s.y + "%", width: s.s, height: s.s,
+          borderRadius: "50%", background: "#fff",
+          animation: "twinkle " + (3 + s.d) + "s ease-in-out " + s.d + "s infinite"
+        }} />
+      ))}
+    </div>
+  );
 }
 
-function ClockCard({ who, tz, now, accent }){
-  const p=partsIn(tz,now), h=hour24In(tz,now), ph=phase(h);
+/* ============================================================
+   Big clock card for one person
+   ============================================================ */
+function ClockCard({ who, tz, now, accent, h12, awakeStart, awakeEnd }){
+  const p = partsIn(tz, now, h12);
+  const h = hour24In(tz, now);
+  const ph = phase(h);
+  const personAwake = h >= awakeStart && h < awakeEnd;
   return (
-    <div className="glow" style={{flex:1,minWidth:240,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",
-      borderRadius:26,padding:"26px 24px",backdropFilter:"blur(12px)",position:"relative",overflow:"hidden",
-      boxShadow:"0 14px 40px rgba(0,0,0,0.3)",transition:"box-shadow .25s ease"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:ph.sky}}/>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.8,fontWeight:600,color:accent}}>{who}</span>
-        <span style={{fontSize:12,opacity:0.55}}>{offsetLabel(tz,now)}</span>
+    <div className="glow" style={{
+      flex: 1, minWidth: 250, background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.12)", borderRadius: 26, padding: "26px 24px",
+      backdropFilter: "blur(12px)", position: "relative", overflow: "hidden",
+      boxShadow: "0 14px 40px rgba(0,0,0,0.3)", transition: "box-shadow .25s ease"
+    }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 5, background: ph.sky }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <span style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.85, fontWeight: 600, color: accent }}>{who}</span>
+        <span style={{ fontSize: 12, opacity: 0.55 }}>{offsetLabel(tz, now)}</span>
       </div>
-      <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-        <span style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:50,fontWeight:600,lineHeight:1,letterSpacing:-1}}>{p.hour}:{p.minute}</span>
-        <span style={{fontSize:18,opacity:0.7}}>{p.dayPeriod}</span>
-        <span style={{fontSize:15,opacity:0.5,marginLeft:2}}>:{p.second}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 50, fontWeight: 600, lineHeight: 1, letterSpacing: -1 }}>
+          {p.hour}:{p.minute}
+        </span>
+        {h12 && <span style={{ fontSize: 18, opacity: 0.7 }}>{p.dayPeriod}</span>}
+        <span style={{ fontSize: 15, opacity: 0.5, marginLeft: 2 }}>:{p.second}</span>
       </div>
-      <div style={{marginTop:8,fontSize:14,opacity:0.7}}>{p.weekday}, {p.month} {p.day}</div>
-      <div style={{marginTop:18,display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"rgba(255,255,255,0.06)"}}>
-        <span style={{fontSize:22}}>{ph.icon}</span>
-        <div><div style={{fontSize:14,fontWeight:600}}>{ph.label}</div>
-        <div style={{fontSize:12,opacity:0.6}}>{awake(h)?"Probably awake":"Probably asleep"}</div></div>
+      <div style={{ marginTop: 8, fontSize: 14, opacity: 0.7 }}>{p.weekday}, {p.month} {p.day}</div>
+      <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.06)" }}>
+        <span style={{ fontSize: 22 }}>{ph.icon}</span>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{ph.label}</div>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>{personAwake ? "Probably awake" : "Probably asleep"}</div>
+        </div>
+        <div style={{ marginLeft: "auto", width: 12, height: 12, borderRadius: "50%",
+          background: personAwake ? "#5fd38a" : "#566", boxShadow: personAwake ? "0 0 10px #5fd38a" : "none" }} />
       </div>
     </div>
   );
 }
 
+/* ============================================================
+   24-hour overlap ring (SVG) showing both people's awake hours
+   ============================================================ */
+function OverlapRing({ tzA, tzB, now, awakeStart, awakeEnd, nameA, nameB }){
+  const size = 230, cx = size/2, cy = size/2;
+  const rA = 92, rB = 72;
+  const base = new Date(now); base.setMinutes(0,0,0);
+  // For each of 24 hours from "viewer A local midnight", figure awake state
+  const segs = [];
+  for(let i=0;i<24;i++){
+    const d = new Date(base.getTime() + (i - hour24In(tzA, base)) * 3600000);
+    const hA = hour24In(tzA, d);
+    const hB = hour24In(tzB, d);
+    segs.push({
+      hour: i,
+      aAwake: hA >= awakeStart && hA < awakeEnd,
+      bAwake: hB >= awakeStart && hB < awakeEnd
+    });
+  }
+  const arc = (idx, r) => {
+    const a0 = (idx/24)*2*Math.PI - Math.PI/2;
+    const a1 = ((idx+1)/24)*2*Math.PI - Math.PI/2;
+    const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+    const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+    return "M " + x0 + " " + y0 + " A " + r + " " + r + " 0 0 1 " + x1 + " " + y1;
+  };
+  const nowAngle = ((hour24In(tzA, now) + minuteIn(tzA, now)/60)/24)*360;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <svg width={size} height={size} viewBox={"0 0 " + size + " " + size}>
+        {/* tick marks */}
+        {Array.from({length:24}).map((_,i)=>{
+          const a = (i/24)*2*Math.PI - Math.PI/2;
+          const r1 = 104, r2 = i%6===0 ? 112 : 108;
+          return <line key={"t"+i} x1={cx+r1*Math.cos(a)} y1={cy+r1*Math.sin(a)} x2={cx+r2*Math.cos(a)} y2={cy+r2*Math.sin(a)} stroke="rgba(255,255,255,0.25)" strokeWidth={i%6===0?2:1}/>;
+        })}
+        {/* base rings */}
+        {segs.map((s,i)=>(<path key={"a"+i} d={arc(i,rA)} stroke={s.aAwake?"#ff8fb0":"rgba(255,143,176,0.12)"} strokeWidth="11" fill="none" strokeLinecap="butt"/>))}
+        {segs.map((s,i)=>(<path key={"b"+i} d={arc(i,rB)} stroke={s.bAwake?"#8fb0ff":"rgba(143,176,255,0.12)"} strokeWidth="11" fill="none" strokeLinecap="butt"/>))}
+        {/* both-awake highlight on outer */}
+        {segs.map((s,i)=> s.aAwake && s.bAwake ? (<path key={"o"+i} d={arc(i,(rA+rB)/2)} stroke="#ffe08a" strokeWidth="3" fill="none"/>) : null)}
+        {/* now hand */}
+        <line x1={cx} y1={cy} x2={cx} y2={cy-100}
+          stroke="#fff" strokeWidth="2" transform={"rotate(" + nowAngle + " " + cx + " " + cy + ")"} opacity="0.8"/>
+        <circle cx={cx} cy={cy} r="4" fill="#fff"/>
+        <text x={cx} y={cy-8} textAnchor="middle" fill="#fff" fontSize="11" opacity="0.6" fontFamily="Space Grotesk">a day</text>
+        <text x={cx} y={cy+12} textAnchor="middle" fill="#fff" fontSize="13" fontWeight="600" fontFamily="Space Grotesk">together</text>
+      </svg>
+      <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 12 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff8fb0", display: "inline-block" }} />{nameA}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: "50%", background: "#8fb0ff", display: "inline-block" }} />{nameB}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: "50%", background: "#ffe08a", display: "inline-block" }} />both</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Reusable bits
+   ============================================================ */
+const pill = { padding: "10px 16px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.07)", color: "#eef1ff", fontSize: 13, fontWeight: 600 };
+const serif = { fontFamily: "'Fraunces',serif" };
+function Toast({ msg }){
+  return <div style={{ position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.82)", color: "#fff", padding: "10px 20px", borderRadius: 20, fontSize: 14, fontWeight: 600, zIndex: 80 }}>{msg}</div>;
+}
+function SectionTitle({ icon, children }){
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <span style={{ fontSize: 20 }}>{icon}</span>
+      <span style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.7, fontWeight: 600 }}>{children}</span>
+    </div>
+  );
+}
+const TONES = [
+  { key: "morning", label: "Good morning", emoji: "\u2600\uFE0F" },
+  { key: "night",   label: "Goodnight",    emoji: "\uD83C\uDF19" },
+  { key: "miss",    label: "Miss you",     emoji: "\uD83E\uDD7A" },
+  { key: "flirty",  label: "Flirty",       emoji: "\uD83D\uDE0F" },
+  { key: "cheer",   label: "Cheer up",     emoji: "\uD83C\uDF1F" },
+  { key: "random",  label: "Surprise",     emoji: "\u2728" }
+];
+
+/* ============================================================
+   Main app
+   ============================================================ */
 function App(){
-  const initial=useMemo(()=>{ try{ const h=window.location.hash.replace(/^#/,""); if(h){ const c=decode(h); if(c&&c.tzA&&c.tzB) return c; } }catch(e){} return null; },[]);
-  const [cfg,setCfg]=useState(initial);
-  const [now,setNow]=useState(new Date());
-  const [toast,setToast]=useState("");
-  const [note,setNote]=useState("");
-  const [loadingNote,setLoadingNote]=useState(false);
+  const initial = useMemo(() => {
+    try {
+      const h = window.location.hash.replace(/^#/, "");
+      if(h){ const c = decode(h); if(c && c.tzA && c.tzB) return c; }
+    } catch(e){}
+    return null;
+  }, []);
 
-  const [nameA,setNameA]=useState("You");
-  const [tzA,setTzA]=useState(guessZone());
-  const [nameB,setNameB]=useState("Partner");
-  const [tzB,setTzB]=useState("America/New_York");
-  const [meetDate,setMeetDate]=useState("");
+  const [cfg, setCfg] = useState(initial);
+  const [now, setNow] = useState(new Date());
+  const [toast, setToast] = useState("");
+  const [tab, setTab] = useState("home");          // home | call | notes
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(t); },[]);
-  const flash=(m)=>{ setToast(m); setTimeout(()=>setToast(""),1800); };
+  // AI note state
+  const [note, setNote] = useState("");
+  const [loadingNote, setLoadingNote] = useState(false);
+  const [tone, setTone] = useState("random");
+  const [savedNotes, setSavedNotes] = useState([]);
 
-  const overlap=useMemo(()=>{ if(!cfg) return []; const base=new Date(now); base.setMinutes(0,0,0); const out=[];
-    for(let i=0;i<24;i++){ const d=new Date(base.getTime()+i*3600000); out.push({d,both:awake(hour24In(cfg.tzA,d))&&awake(hour24In(cfg.tzB,d))}); }
-    let s=out.findIndex(x=>x.both); if(s===-1) return []; let e=s; while(e+1<out.length&&out[e+1].both) e++; return [out[s].d,out[e].d]; },[cfg,now]);
+  // AI question state
+  const [question, setQuestion] = useState("");
+  const [loadingQ, setLoadingQ] = useState(false);
 
-  const daysUntil=useMemo(()=>{ if(!cfg||!cfg.meetDate) return null; const t=new Date(cfg.meetDate+"T00:00:00"); const today=new Date(); today.setHours(0,0,0,0); return Math.round((t-today)/86400000); },[cfg,now]);
+  // setup form fields
+  const [nameA, setNameA] = useState("You");
+  const [tzA, setTzA] = useState(guessZone());
+  const [nameB, setNameB] = useState("Partner");
+  const [tzB, setTzB] = useState("America/New_York");
+  const [meetDate, setMeetDate] = useState("");
+  const [h12, setH12] = useState(true);
+  const [awakeStart, setAwakeStart] = useState(7);
+  const [awakeEnd, setAwakeEnd] = useState(23);
+  const [milestones, setMilestones] = useState([]);
+  const [msLabel, setMsLabel] = useState("");
+  const [msDate, setMsDate] = useState("");
 
-  const shareUrl=useMemo(()=>{ if(!cfg) return ""; try{ return window.location.origin+window.location.pathname+"#"+encode(cfg); }catch(e){ return ""; } },[cfg]);
-  const copy=useCallback(async()=>{ try{ await navigator.clipboard.writeText(shareUrl); flash("Link copied \u2713"); }catch(e){ flash("Long-press to copy the link"); } },[shareUrl]);
+  const firstLoad = useRef(true);
 
-  const writeNote=useCallback(async()=>{
-    if(!cfg) return; setLoadingNote(true); setNote("");
-    const hB=hour24In(cfg.tzB,now); const phB=phase(hB).label; const awakeB=awake(hB);
-    const ctx = awakeB ? (phB+", and they're likely awake right now") : "late at night for them, they're likely asleep";
-    const prompt = "Write ONE short, warm, original text message I can send to my long-distance partner named "+cfg.nameB+". It is "+ctx+". Make it sweet and specific to the time of day, not generic. One or two sentences, under 30 words, no quotes, no emojis at the start, sound like a real person texting someone they love.";
-    try { const t=await askAI(prompt); setNote(t); }
-    catch(e){ setNote(awakeB ? ("Thinking about you, "+cfg.nameB+". Free for a quick call?") : ("Goodnight, "+cfg.nameB+". Wherever you are, you're the last thing on my mind tonight.")); }
-    finally { setLoadingNote(false); }
-  },[cfg,now]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
-  const sendNote=()=>{ const text=note+"\n\n("+shareUrl+")"; window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank"); };
+  // keep hash synced when cfg or savedNotes change
+  useEffect(() => {
+    if(firstLoad.current){ firstLoad.current = false; return; }
+    if(cfg){
+      try { window.history.replaceState(null, "", "#" + encode({ ...cfg, savedNotes })); } catch(e){}
+    }
+  }, [cfg, savedNotes]);
 
-  const submit=()=>{ setCfg({nameA:nameA.trim()||"You",tzA,nameB:nameB.trim()||"Partner",tzB,meetDate}); };
+  // hydrate savedNotes from cfg on first mount
+  useEffect(() => {
+    if(initial && initial.savedNotes) setSavedNotes(initial.savedNotes);
+  }, [initial]);
 
-  const wrap={minHeight:"100vh",background:"radial-gradient(1200px 600px at 50% -10%, #1a2547 0%, #0b1020 60%)",color:"#eef1ff",fontFamily:"'Space Grotesk',sans-serif",position:"relative",padding:"clamp(20px,5vw,48px)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:22};
-  const serif={fontFamily:"'Fraunces',serif"};
-  const inp={width:"100%",padding:"13px 14px",borderRadius:13,border:"1px solid rgba(255,255,255,0.18)",background:"rgba(255,255,255,0.06)",color:"#fff",fontSize:15,outline:"none",marginBottom:14};
-  const lbl={display:"block",fontSize:12,letterSpacing:1,textTransform:"uppercase",opacity:0.6,fontWeight:600,margin:"0 0 7px"};
-  const cta={width:"100%",padding:"15px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#ff6b9d,#7b6bff)",color:"#fff",fontSize:16,fontWeight:700,boxShadow:"0 10px 30px rgba(123,107,255,0.35)"};
-  const pill={padding:"10px 16px",borderRadius:20,border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.07)",color:"#eef1ff",fontSize:13,fontWeight:600};
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 1800); };
 
+  const aStart = cfg ? (cfg.awakeStart ?? 7) : 7;
+  const aEnd = cfg ? (cfg.awakeEnd ?? 23) : 23;
+  const use12 = cfg ? (cfg.h12 ?? true) : true;
+
+  /* ---- overlap (next contiguous window) ---- */
+  const overlap = useMemo(() => {
+    if(!cfg) return [];
+    const base = new Date(now); base.setMinutes(0,0,0);
+    const out = [];
+    for(let i=0;i<24;i++){
+      const d = new Date(base.getTime() + i*3600000);
+      const hA = hour24In(cfg.tzA, d), hB = hour24In(cfg.tzB, d);
+      out.push({ d, both: (hA>=aStart && hA<aEnd) && (hB>=aStart && hB<aEnd) });
+    }
+    let s = out.findIndex(x => x.both);
+    if(s === -1) return [];
+    let e = s;
+    while(e+1 < out.length && out[e+1].both) e++;
+    return [out[s].d, out[e].d];
+  }, [cfg, now, aStart, aEnd]);
+
+  /* ---- list of all good call windows in next 24h ---- */
+  const callWindows = useMemo(() => {
+    if(!cfg) return [];
+    const base = new Date(now); base.setMinutes(0,0,0);
+    const flags = [];
+    for(let i=0;i<24;i++){
+      const d = new Date(base.getTime() + i*3600000);
+      const hA = hour24In(cfg.tzA, d), hB = hour24In(cfg.tzB, d);
+      flags.push({ d, both: (hA>=aStart && hA<aEnd) && (hB>=aStart && hB<aEnd) });
+    }
+    const windows = [];
+    let i = 0;
+    while(i < flags.length){
+      if(flags[i].both){
+        let j = i;
+        while(j+1 < flags.length && flags[j+1].both) j++;
+        windows.push([flags[i].d, flags[j].d]);
+        i = j+1;
+      } else i++;
+    }
+    return windows;
+  }, [cfg, now, aStart, aEnd]);
+
+  /* ---- next milestone + live countdown ---- */
+  const allDates = useMemo(() => {
+    if(!cfg) return [];
+    const arr = [];
+    if(cfg.meetDate) arr.push({ id: "meet", label: "Together again", date: cfg.meetDate });
+    (cfg.milestones || []).forEach(m => arr.push(m));
+    return arr
+      .map(m => ({ ...m, ts: new Date(m.date + "T00:00:00").getTime() }))
+      .sort((a,b) => a.ts - b.ts);
+  }, [cfg]);
+
+  const nextMilestone = useMemo(() => {
+    const t = now.getTime();
+    return allDates.find(m => m.ts >= t - 86400000) || null;
+  }, [allDates, now]);
+
+  const countdown = useMemo(() => {
+    if(!nextMilestone) return null;
+    const diff = nextMilestone.ts - now.getTime();
+    if(diff <= 0) return { passed: diff < -86400000, today: diff >= -86400000 && diff <= 0 };
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    return { days, hours, mins, secs };
+  }, [nextMilestone, now]);
+
+  const shareUrl = useMemo(() => {
+    if(!cfg) return "";
+    try { return window.location.origin + window.location.pathname + "#" + encode({ ...cfg, savedNotes }); }
+    catch(e){ return ""; }
+  }, [cfg, savedNotes]);
+
+  const copy = useCallback(async () => {
+    try { await navigator.clipboard.writeText(shareUrl); flash("Link copied \u2713"); }
+    catch(e){ flash("Long-press to copy the link"); }
+  }, [shareUrl]);
+
+  /* ---- AI: write a note ---- */
+  const writeNote = useCallback(async () => {
+    if(!cfg) return;
+    setLoadingNote(true); setNote("");
+    const hB = hour24In(cfg.tzB, now);
+    const ph = phase(hB);
+    const ctx = ph.awake ? (ph.label.toLowerCase() + " for them, they're likely awake") : "the middle of the night for them, they're asleep";
+    const toneText = {
+      morning: "a sweet good-morning message",
+      night: "a tender goodnight message",
+      miss: "a heartfelt 'I miss you' message",
+      flirty: "a playful, flirty message",
+      cheer: "an encouraging, cheer-them-up message",
+      random: "a warm, loving message"
+    }[tone];
+    const prompt = "Write ONE short original text message I can send to my long-distance partner named " + cfg.nameB +
+      ". Make it " + toneText + ". Right now it is " + ctx + ". One or two sentences, under 32 words, sound like a real person texting someone they love, no quotes, no emojis at the very start.";
+    try {
+      const t = await askAI(prompt, 320);
+      setNote(t);
+    } catch(e){
+      const fb = {
+        morning: "Good morning, " + cfg.nameB + ". You're the first nice thing I think of every day.",
+        night: "Goodnight, " + cfg.nameB + ". Wherever you are, you're the last thing on my mind tonight.",
+        miss: "Missing you a stupid amount today, " + cfg.nameB + ". Counting down to you.",
+        flirty: "Can't stop thinking about you, " + cfg.nameB + ". This distance is doing you way too many favors.",
+        cheer: "Whatever today threw at you, " + cfg.nameB + ", you've got this. And you've got me.",
+        random: "Just wanted you to know you're loved today, " + cfg.nameB + ". A lot."
+      }[tone];
+      setNote(fb);
+    } finally { setLoadingNote(false); }
+  }, [cfg, now, tone]);
+
+  const saveNote = () => {
+    if(!note) return;
+    setSavedNotes(s => [{ id: uid(), text: note, at: Date.now() }, ...s].slice(0, 30));
+    flash("Saved to your notes \u2665");
+  };
+  const removeNote = (id) => setSavedNotes(s => s.filter(n => n.id !== id));
+  const sendNote = (txt) => {
+    const text = txt + "\n\n(" + shareUrl + ")";
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+  };
+
+  /* ---- AI: question of the day ---- */
+  const newQuestion = useCallback(async () => {
+    setLoadingQ(true); setQuestion("");
+    const prompt = "Give me ONE thoughtful, fun question for a couple in a long-distance relationship to ask each other today. Keep it light and warm, one sentence, no preamble, no quotes.";
+    try { const t = await askAI(prompt, 160); setQuestion(t); }
+    catch(e){ setQuestion("If we could teleport to anywhere right now for one hour together, where would we go?"); }
+    finally { setLoadingQ(false); }
+  }, []);
+
+  /* ---- setup actions ---- */
+  const addMilestone = () => {
+    if(!msLabel.trim() || !msDate) return;
+    setMilestones(m => [...m, { id: uid(), label: msLabel.trim(), date: msDate }]);
+    setMsLabel(""); setMsDate("");
+  };
+  const removeMilestone = (id) => setMilestones(m => m.filter(x => x.id !== id));
+
+  const submit = () => {
+    setCfg({
+      nameA: nameA.trim() || "You", tzA,
+      nameB: nameB.trim() || "Partner", tzB,
+      meetDate, h12, awakeStart, awakeEnd, milestones
+    });
+    setTab("home");
+  };
+  const editFromCfg = () => {
+    setNameA(cfg.nameA); setTzA(cfg.tzA); setNameB(cfg.nameB); setTzB(cfg.tzB);
+    setMeetDate(cfg.meetDate || ""); setH12(cfg.h12 ?? true);
+    setAwakeStart(cfg.awakeStart ?? 7); setAwakeEnd(cfg.awakeEnd ?? 23);
+    setMilestones(cfg.milestones || []);
+    setCfg(null);
+  };
+
+  /* ---- styles ---- */
+  const wrap = {
+    minHeight: "100vh",
+    background: "radial-gradient(1200px 600px at 50% -10%, #1a2547 0%, #0b1020 60%)",
+    color: "#eef1ff", fontFamily: "'Space Grotesk',sans-serif", position: "relative",
+    padding: "clamp(18px,4vw,40px)", display: "flex", flexDirection: "column",
+    alignItems: "center", gap: 20
+  };
+  const inp = { width: "100%", padding: "13px 14px", borderRadius: 13, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 15, outline: "none", marginBottom: 14 };
+  const lbl = { display: "block", fontSize: 12, letterSpacing: 1, textTransform: "uppercase", opacity: 0.6, fontWeight: 600, margin: "0 0 7px" };
+  const cta = { width: "100%", padding: "15px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#ff6b9d,#7b6bff)", color: "#fff", fontSize: 16, fontWeight: 700, boxShadow: "0 10px 30px rgba(123,107,255,0.35)" };
+  const cardStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, padding: "22px 24px", backdropFilter: "blur(12px)", width: "100%" };
+
+  /* ====================  SETUP SCREEN  ==================== */
   if(!cfg){
     return (
-      <div style={wrap}><Stars/>
-        <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:420,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:28,padding:"34px 28px",backdropFilter:"blur(14px)",animation:"fadeUp .5s ease",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-          <div style={{fontSize:40,textAlign:"center"}}>{"\uD83C\uDF0D"}</div>
-          <h1 style={Object.assign({},serif,{textAlign:"center",margin:"8px 0 4px",fontSize:28,fontWeight:600})}>Our distance, in time</h1>
-          <p style={{textAlign:"center",opacity:0.7,fontSize:14,lineHeight:1.5,margin:"0 0 24px"}}>Two clocks, the hours you're both awake, a countdown, and an AI that helps you say the right thing.</p>
+      <div style={wrap}>
+        <Stars />
+        <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 440, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 28, padding: "32px 28px", backdropFilter: "blur(14px)", animation: "fadeUp .5s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.4)", maxHeight: "94vh", overflowY: "auto" }}>
+          <div style={{ fontSize: 40, textAlign: "center" }}>{"\uD83C\uDF0D"}</div>
+          <h1 style={Object.assign({}, serif, { textAlign: "center", margin: "8px 0 4px", fontSize: 28, fontWeight: 600 })}>Our distance, in time</h1>
+          <p style={{ textAlign: "center", opacity: 0.7, fontSize: 14, lineHeight: 1.5, margin: "0 0 24px" }}>
+            Two clocks, a day-ring of your shared hours, smart call times, countdowns, and an AI that helps you say the right thing.
+          </p>
+
           <label style={lbl}>Person one</label>
-          <input style={inp} value={nameA} onChange={e=>setNameA(e.target.value)} placeholder="Name"/>
-          <select style={inp} value={tzA} onChange={e=>setTzA(e.target.value)}>{ZONES.map(z=><option key={z} value={z}>{z.replace(/_/g," ")}</option>)}</select>
+          <input style={inp} value={nameA} onChange={e => setNameA(e.target.value)} placeholder="Name" />
+          <select style={inp} value={tzA} onChange={e => setTzA(e.target.value)}>
+            {ZONES.map(z => <option key={z} value={z}>{zoneLabel(z)}</option>)}
+          </select>
+
           <label style={lbl}>Person two</label>
-          <input style={inp} value={nameB} onChange={e=>setNameB(e.target.value)} placeholder="Name"/>
-          <select style={inp} value={tzB} onChange={e=>setTzB(e.target.value)}>{ZONES.map(z=><option key={z} value={z}>{z.replace(/_/g," ")}</option>)}</select>
+          <input style={inp} value={nameB} onChange={e => setNameB(e.target.value)} placeholder="Name" />
+          <select style={inp} value={tzB} onChange={e => setTzB(e.target.value)}>
+            {ZONES.map(z => <option key={z} value={z}>{zoneLabel(z)}</option>)}
+          </select>
+
           <label style={lbl}>Next time you meet (optional)</label>
-          <input style={inp} type="date" value={meetDate} onChange={e=>setMeetDate(e.target.value)}/>
-          <button onClick={submit} style={Object.assign({},cta,{marginTop:6})}>Start the clocks {"\u2728"}</button>
+          <input style={inp} type="date" value={meetDate} onChange={e => setMeetDate(e.target.value)} />
+
+          <label style={lbl}>Awake hours (so we know who's likely up)</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <select style={{ ...inp, marginBottom: 0 }} value={awakeStart} onChange={e => setAwakeStart(+e.target.value)}>
+              {Array.from({length:24}).map((_,i)=><option key={i} value={i}>{i}:00 up</option>)}
+            </select>
+            <select style={{ ...inp, marginBottom: 0 }} value={awakeEnd} onChange={e => setAwakeEnd(+e.target.value)}>
+              {Array.from({length:24}).map((_,i)=><option key={i} value={i}>{i}:00 sleep</option>)}
+            </select>
+          </div>
+
+          <label style={lbl}>Time format</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+            <button onClick={() => setH12(true)} style={{ ...pill, flex: 1, background: h12 ? "rgba(255,107,157,0.3)" : "rgba(255,255,255,0.07)" }}>12-hour</button>
+            <button onClick={() => setH12(false)} style={{ ...pill, flex: 1, background: !h12 ? "rgba(255,107,157,0.3)" : "rgba(255,255,255,0.07)" }}>24-hour</button>
+          </div>
+
+          <label style={lbl}>Milestones to count down to (optional)</label>
+          {milestones.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, background: "rgba(255,255,255,0.06)", padding: "8px 12px", borderRadius: 12 }}>
+              <span style={{ flex: 1, fontSize: 14 }}>{m.label}</span>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>{m.date}</span>
+              <button onClick={() => removeMilestone(m.id)} style={{ background: "none", border: "none", color: "#d49ac4", fontSize: 18, cursor: "pointer" }}>{"\u00d7"}</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            <input style={{ ...inp, marginBottom: 0, flex: 1 }} value={msLabel} onChange={e => setMsLabel(e.target.value)} placeholder="e.g. Anniversary" />
+            <input style={{ ...inp, marginBottom: 0, width: 150 }} type="date" value={msDate} onChange={e => setMsDate(e.target.value)} />
+            <button onClick={addMilestone} style={{ ...pill, border: "none", background: "#7b6bff" }}>Add</button>
+          </div>
+
+          <button onClick={submit} style={{ ...cta, marginTop: 4 }}>Start the clocks {"\u2728"}</button>
         </div>
       </div>
     );
   }
 
-  const fmt=(d)=>new Intl.DateTimeFormat("en-US",{hour:"numeric",hour12:true}).format(d);
+  /* ====================  MAIN APP  ==================== */
+  const fmtHour = (d) => new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: use12 }).format(d);
+  const tabBtn = (key, label) => (
+    <button onClick={() => setTab(key)} style={{
+      flex: 1, padding: "11px", borderRadius: 14, border: "none", fontSize: 14, fontWeight: 700,
+      background: tab === key ? "rgba(255,255,255,0.16)" : "transparent",
+      color: tab === key ? "#fff" : "rgba(255,255,255,0.55)"
+    }}>{label}</button>
+  );
+
   return (
-    <div style={wrap}><Stars/>
-      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:760,display:"flex",flexDirection:"column",gap:18,animation:"fadeUp .5s ease"}}>
-        <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
-          <ClockCard who={cfg.nameA} tz={cfg.tzA} now={now} accent="#ff8fb0"/>
-          <ClockCard who={cfg.nameB} tz={cfg.tzB} now={now} accent="#8fb0ff"/>
+    <div style={wrap}>
+      <Stars />
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 780, display: "flex", flexDirection: "column", gap: 18, animation: "fadeUp .5s ease" }}>
+
+        {/* header / tabs */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <h1 style={Object.assign({}, serif, { margin: 0, fontSize: 22, fontWeight: 600 })}>
+            {cfg.nameA} <span style={{ opacity: 0.5 }}>&amp;</span> {cfg.nameB}
+          </h1>
+          <button onClick={() => setSettingsOpen(true)} style={{ ...pill, padding: "8px 12px" }}>{"\u2699\uFE0F"}</button>
         </div>
 
-        <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:22,padding:"22px 24px",backdropFilter:"blur(12px)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <span style={{fontSize:20}}>{"\uD83D\uDC9B"}</span>
-            <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.65,fontWeight:600}}>Good hours together</span>
-          </div>
-          {overlap.length===2 ? (
-            <p style={Object.assign({},serif,{margin:0,fontSize:20})}>You're both awake from <b>{fmt(overlap[0])}</b> to <b>{fmt(new Date(overlap[1].getTime()+3600000))}</b> {cfg.nameA==="You"?"your":cfg.nameA+"'s"} time.</p>
-          ) : (
-            <p style={Object.assign({},serif,{margin:0,fontSize:20,opacity:0.85})}>No shared waking hours right now, one of you is dreaming. {"\uD83C\uDF19"}</p>
-          )}
+        <div style={{ display: "flex", gap: 6, background: "rgba(255,255,255,0.05)", borderRadius: 16, padding: 5 }}>
+          {tabBtn("home", "Clocks")}
+          {tabBtn("call", "Best times")}
+          {tabBtn("notes", "Love notes")}
         </div>
 
-        {/* AI note */}
-        <div style={{background:"linear-gradient(135deg,rgba(255,107,157,0.12),rgba(123,107,255,0.12))",border:"1px solid rgba(255,255,255,0.14)",borderRadius:22,padding:"22px 24px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <span style={{fontSize:20}}>{"\u2728"}</span>
-            <span style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.7,fontWeight:600}}>Say the right thing</span>
-          </div>
-          {loadingNote ? (
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-              <div className="skeleton" style={{height:14,borderRadius:7,width:"92%"}}/>
-              <div className="skeleton" style={{height:14,borderRadius:7,width:"70%"}}/>
+        {/* ============ HOME TAB ============ */}
+        {tab === "home" && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+              <ClockCard who={cfg.nameA} tz={cfg.tzA} now={now} accent="#ff8fb0" h12={use12} awakeStart={aStart} awakeEnd={aEnd} />
+              <ClockCard who={cfg.nameB} tz={cfg.tzB} now={now} accent="#8fb0ff" h12={use12} awakeStart={aStart} awakeEnd={aEnd} />
             </div>
-          ) : note ? (
-            <p style={Object.assign({},serif,{margin:"0 0 14px",fontSize:20,lineHeight:1.5})}>{"\u201c"+note+"\u201d"}</p>
-          ) : (
-            <p style={{margin:"0 0 14px",fontSize:15,opacity:0.7,lineHeight:1.5}}>Let AI write a text that fits {cfg.nameB}'s time of day right now, ready to send.</p>
-          )}
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <button onClick={writeNote} disabled={loadingNote} style={Object.assign({},pill,{background:"linear-gradient(135deg,#ff6b9d,#7b6bff)",border:"none",color:"#fff",opacity:loadingNote?0.6:1})}>
-              {note?"Write another":"Write a note"} {"\u2728"}
-            </button>
-            {note && !loadingNote && <button onClick={sendNote} style={pill}>Send on WhatsApp</button>}
-            {note && !loadingNote && <button onClick={()=>{navigator.clipboard.writeText(note); flash("Note copied \u2713");}} style={pill}>Copy note</button>}
-          </div>
-        </div>
 
-        {daysUntil!==null && (
-          <div style={{background:"linear-gradient(135deg,rgba(255,107,157,0.18),rgba(123,107,255,0.18))",border:"1px solid rgba(255,255,255,0.14)",borderRadius:22,padding:"24px",textAlign:"center",animation:"pulse 5s ease-in-out infinite"}}>
-            {daysUntil>0 ? (<>
-              <div style={{fontSize:13,letterSpacing:1.5,textTransform:"uppercase",opacity:0.7,fontWeight:600}}>Until you're together</div>
-              <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:56,fontWeight:700,lineHeight:1.1,margin:"6px 0"}}>{daysUntil}</div>
-              <div style={{fontSize:16,opacity:0.85}}>{daysUntil===1?"day":"days"} to go {"\u2708\uFE0F"}</div>
-            </>) : daysUntil===0 ? (
-              <div style={Object.assign({},serif,{fontSize:26,fontWeight:600})}>Today's the day. {"\uD83E\uDD70"}</div>
-            ) : (
-              <div style={Object.assign({},serif,{fontSize:20})}>That date has passed, set a new one to count down to. {"\uD83D\uDC9E"}</div>
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDD52"}>A day, together</SectionTitle>
+              <OverlapRing tzA={cfg.tzA} tzB={cfg.tzB} now={now} awakeStart={aStart} awakeEnd={aEnd} nameA={cfg.nameA} nameB={cfg.nameB} />
+            </div>
+
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDC9B"}>Right now</SectionTitle>
+              {overlap.length === 2 ? (
+                <p style={Object.assign({}, serif, { margin: 0, fontSize: 20 })}>
+                  You're both awake from <b>{fmtHour(overlap[0])}</b> to <b>{fmtHour(new Date(overlap[1].getTime() + 3600000))}</b> {cfg.nameA === "You" ? "your" : cfg.nameA + "'s"} time.
+                </p>
+              ) : (
+                <p style={Object.assign({}, serif, { margin: 0, fontSize: 20, opacity: 0.85 })}>
+                  No shared waking hours right now, one of you is dreaming. {"\uD83C\uDF19"}
+                </p>
+              )}
+            </div>
+
+            {countdown && nextMilestone && (
+              <div style={{ background: "linear-gradient(135deg,rgba(255,107,157,0.18),rgba(123,107,255,0.18))", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 22, padding: "24px", textAlign: "center", animation: "pulse 5s ease-in-out infinite" }}>
+                <div style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.7, fontWeight: 600 }}>{nextMilestone.label}</div>
+                {countdown.today ? (
+                  <div style={Object.assign({}, serif, { fontSize: 30, fontWeight: 600, margin: "10px 0" })}>It's today! {"\uD83E\uDD70"}</div>
+                ) : countdown.passed ? (
+                  <div style={Object.assign({}, serif, { fontSize: 20, margin: "10px 0" })}>That date has passed, set a new one. {"\uD83D\uDC9E"}</div>
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 14, margin: "14px 0 4px", flexWrap: "wrap" }}>
+                    {[["days", countdown.days], ["hrs", countdown.hours], ["min", countdown.mins], ["sec", countdown.secs]].map(([l, v]) => (
+                      <div key={l} style={{ minWidth: 64 }}>
+                        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 38, fontWeight: 700, lineHeight: 1 }}>{String(v).padStart(2, "0")}</div>
+                        <div style={{ fontSize: 12, opacity: 0.65, textTransform: "uppercase", letterSpacing: 1 }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {allDates.length > 1 && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.15)", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {allDates.filter(m => m.id !== nextMilestone.id).slice(0, 4).map(m => {
+                      const dd = Math.ceil((m.ts - now.getTime()) / 86400000);
+                      return <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 14, opacity: 0.8 }}>
+                        <span>{m.label}</span><span>{dd > 0 ? dd + " days" : "passed"}</span>
+                      </div>;
+                    })}
+                  </div>
+                )}
+              </div>
             )}
-          </div>
+
+            {/* AI question of the day */}
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDCAC"}>A question for you two</SectionTitle>
+              {loadingQ ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                  <div className="skeleton" style={{ height: 14, borderRadius: 7, width: "90%" }} />
+                  <div className="skeleton" style={{ height: 14, borderRadius: 7, width: "60%" }} />
+                </div>
+              ) : question ? (
+                <p style={Object.assign({}, serif, { margin: "0 0 12px", fontSize: 19, lineHeight: 1.5 })}>{question}</p>
+              ) : (
+                <p style={{ margin: "0 0 12px", fontSize: 14, opacity: 0.7 }}>Tap for a little conversation starter to send today.</p>
+              )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button onClick={newQuestion} disabled={loadingQ} style={{ ...pill, background: "rgba(123,107,255,0.25)", opacity: loadingQ ? 0.6 : 1 }}>{question ? "Another" : "Get a question"} {"\u2728"}</button>
+                {question && <button onClick={() => sendNote(question)} style={pill}>Send it</button>}
+              </div>
+            </div>
+          </>
         )}
 
-        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+        {/* ============ CALL TAB ============ */}
+        {tab === "call" && (
+          <>
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDCDE"}>Best times to call (next 24h)</SectionTitle>
+              {callWindows.length === 0 ? (
+                <p style={{ opacity: 0.7, fontSize: 15 }}>No overlapping awake hours in the next day. Your best bet is the edge of {cfg.nameB}'s morning or evening.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {callWindows.map((w, i) => {
+                    const aStartH = fmtHour(w[0]);
+                    const aEndH = fmtHour(new Date(w[1].getTime() + 3600000));
+                    const bStart = new Intl.DateTimeFormat("en-US", { timeZone: cfg.tzB, hour: "numeric", hour12: use12 }).format(w[0]);
+                    const bEnd = new Intl.DateTimeFormat("en-US", { timeZone: cfg.tzB, hour: "numeric", hour12: use12 }).format(new Date(w[1].getTime() + 3600000));
+                    const hrs = Math.round((w[1].getTime() - w[0].getTime()) / 3600000) + 1;
+                    return (
+                      <div key={i} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 14, padding: "14px 16px", animation: "slideIn .3s ease " + (i * 0.05) + "s both" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 16, fontWeight: 600 }}>Window {i + 1}</span>
+                          <span style={{ fontSize: 12, opacity: 0.6 }}>{hrs}h long</span>
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 14, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <span style={{ color: "#ff8fb0" }}>{cfg.nameA}: {aStartH}–{aEndH}</span>
+                          <span style={{ color: "#8fb0ff" }}>{cfg.nameB}: {bStart}–{bEnd}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDCA1"}>Tip</SectionTitle>
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, opacity: 0.85 }}>
+                The yellow band on the day-ring shows when you're both awake. The little hand is right now in {cfg.nameA === "You" ? "your" : cfg.nameA + "'s"} time. Pick a window that's morning for one of you and evening for the other so neither has to rush.
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ============ NOTES TAB ============ */}
+        {tab === "notes" && (
+          <>
+            <div style={{ background: "linear-gradient(135deg,rgba(255,107,157,0.12),rgba(123,107,255,0.12))", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 22, padding: "22px 24px" }}>
+              <SectionTitle icon={"\u2728"}>Say the right thing</SectionTitle>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                {TONES.map(t => (
+                  <button key={t.key} onClick={() => setTone(t.key)} style={{
+                    padding: "8px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    border: tone === t.key ? "2px solid #ff8fb0" : "1px solid rgba(255,255,255,0.18)",
+                    background: tone === t.key ? "rgba(255,143,176,0.18)" : "rgba(255,255,255,0.05)", color: "#fff"
+                  }}>{t.emoji} {t.label}</button>
+                ))}
+              </div>
+              {loadingNote ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                  <div className="skeleton" style={{ height: 14, borderRadius: 7, width: "92%" }} />
+                  <div className="skeleton" style={{ height: 14, borderRadius: 7, width: "70%" }} />
+                </div>
+              ) : note ? (
+                <p style={Object.assign({}, serif, { margin: "0 0 14px", fontSize: 20, lineHeight: 1.5 })}>{"\u201c" + note + "\u201d"}</p>
+              ) : (
+                <p style={{ margin: "0 0 14px", fontSize: 15, opacity: 0.7, lineHeight: 1.5 }}>Pick a vibe and let AI write a message that fits {cfg.nameB}'s time of day right now.</p>
+              )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button onClick={writeNote} disabled={loadingNote} style={{ ...pill, background: "linear-gradient(135deg,#ff6b9d,#7b6bff)", border: "none", color: "#fff", opacity: loadingNote ? 0.6 : 1 }}>
+                  {note ? "Write another" : "Write a note"} {"\u2728"}
+                </button>
+                {note && !loadingNote && <button onClick={() => sendNote(note)} style={pill}>Send on WhatsApp</button>}
+                {note && !loadingNote && <button onClick={() => { navigator.clipboard.writeText(note); flash("Note copied \u2713"); }} style={pill}>Copy</button>}
+                {note && !loadingNote && <button onClick={saveNote} style={pill}>Save {"\u2665"}</button>}
+              </div>
+            </div>
+
+            <div style={cardStyle}>
+              <SectionTitle icon={"\uD83D\uDCD3"}>Saved notes</SectionTitle>
+              {savedNotes.length === 0 ? (
+                <p style={{ opacity: 0.6, fontSize: 14 }}>Notes you save show up here, and travel with your share link.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: "44vh", overflowY: "auto" }}>
+                  {savedNotes.map(n => (
+                    <div key={n.id} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 14, padding: "12px 14px", animation: "slideIn .3s ease" }}>
+                      <p style={Object.assign({}, serif, { margin: "0 0 8px", fontSize: 16, lineHeight: 1.45 })}>{"\u201c" + n.text + "\u201d"}</p>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => sendNote(n.text)} style={{ ...pill, padding: "6px 12px", fontSize: 12 }}>Send</button>
+                        <button onClick={() => { navigator.clipboard.writeText(n.text); flash("Copied \u2713"); }} style={{ ...pill, padding: "6px 12px", fontSize: 12 }}>Copy</button>
+                        <button onClick={() => removeNote(n.id)} style={{ ...pill, padding: "6px 12px", fontSize: 12, marginLeft: "auto" }}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginTop: 4 }}>
           <button onClick={copy} style={pill}>Copy share link</button>
-          <button onClick={()=>{setNameA(cfg.nameA);setTzA(cfg.tzA);setNameB(cfg.nameB);setTzB(cfg.tzB);setMeetDate(cfg.meetDate||"");setCfg(null);}} style={pill}>Edit</button>
+          <button onClick={editFromCfg} style={pill}>Edit setup</button>
         </div>
       </div>
-      {toast && <div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.8)",color:"#fff",padding:"9px 20px",borderRadius:20,fontSize:14,fontWeight:600,zIndex:5}}>{toast}</div>}
+
+      {/* settings drawer */}
+      {settingsOpen && (
+        <div onClick={() => setSettingsOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 70, display: "flex", justifyContent: "flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: "min(360px,90vw)", height: "100%", background: "#141a33", padding: "26px 22px", animation: "drawerIn .3s ease", overflowY: "auto", borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
+            <h2 style={Object.assign({}, serif, { marginTop: 0, fontSize: 22 })}>Settings</h2>
+
+            <label style={lbl}>Time format</label>
+            <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+              <button onClick={() => setCfg({ ...cfg, h12: true })} style={{ ...pill, flex: 1, background: use12 ? "rgba(255,107,157,0.3)" : "rgba(255,255,255,0.07)" }}>12-hour</button>
+              <button onClick={() => setCfg({ ...cfg, h12: false })} style={{ ...pill, flex: 1, background: !use12 ? "rgba(255,107,157,0.3)" : "rgba(255,255,255,0.07)" }}>24-hour</button>
+            </div>
+
+            <label style={lbl}>Awake from</label>
+            <select style={inp} value={aStart} onChange={e => setCfg({ ...cfg, awakeStart: +e.target.value })}>
+              {Array.from({length:24}).map((_,i)=><option key={i} value={i}>{i}:00</option>)}
+            </select>
+            <label style={lbl}>Asleep at</label>
+            <select style={inp} value={aEnd} onChange={e => setCfg({ ...cfg, awakeEnd: +e.target.value })}>
+              {Array.from({length:24}).map((_,i)=><option key={i} value={i}>{i}:00</option>)}
+            </select>
+
+            <button onClick={() => { editFromCfg(); setSettingsOpen(false); }} style={{ ...cta, marginTop: 10 }}>Edit names &amp; dates</button>
+            <button onClick={() => setSettingsOpen(false)} style={{ ...pill, width: "100%", marginTop: 12 }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {toast && <Toast msg={toast} />}
     </div>
   );
 }
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
